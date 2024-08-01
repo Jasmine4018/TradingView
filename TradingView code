@@ -5,74 +5,111 @@ import time
 from datetime import datetime
 import pytz
 
-# Constants
-URL = "https://www.tradingview.com/markets/stocks-usa/market-movers-active/"
-FILE_PATH = "TV.xlsx"
-WAIT_TIME_SECONDS = 120
-START_HOUR = 7
-END_HOUR = 18
-END_MINUTE = 30
+# Constants for configuration
+URL = "https://www.tradingview.com/markets/stocks-usa/market-movers-active/"  # URL of the TradingView market movers page
+FILE_PATH = "TV.xlsx"  # Path where the data will be saved
+WAIT_TIME_SECONDS = 120  # Time to wait between data fetches (in seconds)
+START_HOUR = 7  # Start time (7 AM)
+END_HOUR = 18  # End time (6 PM)
+END_MINUTE = 30  # End time minute (30 minutes past 6 PM)
 
 def fetch_stock_data(url):
+    """
+    Fetches the HTML content from the given URL using a HTTP GET request.
+
+    Parameters:
+    url (str): The URL to fetch data from.
+
+    Returns:
+    bytes: The HTML content of the page if the request is successful, None otherwise.
+    """
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
     try:
+        # Send GET request to the URL
         response = requests.get(url, headers=headers)
+        
+        # Check if the request was successful
         if response.status_code == 200:
-            return response.content
+            return response.content  # Return HTML content
         else:
             print(f"Failed to fetch data. Status code: {response.status_code}. Response: {response.text}")
-            return None
+            return None  # Return None if request failed
     except Exception as e:
         print(f"Error fetching data: {str(e)}")
-        return None
+        return None  # Return None if an exception occurred
 
 def parse_stock_data(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    rows = soup.select('table tr')  # Adjust this selector based on TradingView's table structure
+    """
+    Parses the HTML content to extract stock data.
+
+    Parameters:
+    html (bytes): The HTML content of the page.
+
+    Returns:
+    tuple: A tuple containing headers (list of strings) and data (list of lists).
+    """
+    soup = BeautifulSoup(html, 'html.parser')  # Parse HTML with BeautifulSoup
+    rows = soup.select('table tr')  # Select all table rows (update selector if necessary)
     data = []
     
-    # Assuming the first row contains headers
+    # Extract headers from the first row
     headers = [header.text for header in rows[0].find_all('th')]
+    
+    # Extract data from subsequent rows
     for row in rows[1:]:
         columns = row.find_all('td')
         data.append([column.text for column in columns])
     
-    return headers, data
+    return headers, data  # Return extracted headers and data
 
 def append_to_excel(file_path, headers, data):
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df = pd.DataFrame(data, columns=headers)
-    df.insert(0, 'Timestamp', current_time)
+    """
+    Appends the stock data to an Excel file, including a timestamp.
+
+    Parameters:
+    file_path (str): The path to the Excel file.
+    headers (list of str): The headers for the data.
+    data (list of lists): The stock data to append.
+    """
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # Get current timestamp
+    df = pd.DataFrame(data, columns=headers)  # Create DataFrame from data
+    df.insert(0, 'Timestamp', current_time)  # Insert timestamp column
     
     try:
+        # Try to read existing data from Excel file
         existing_df = pd.read_excel(file_path)
-        df = pd.concat([existing_df, df], ignore_index=True)
+        df = pd.concat([existing_df, df], ignore_index=True)  # Concatenate new data with existing data
     except FileNotFoundError:
-        pass  # File doesn't exist yet, so we'll create it
+        pass  # If file does not exist, we'll create it
     
-    df.to_excel(file_path, index=False)
+    df.to_excel(file_path, index=False)  # Save DataFrame to Excel file
 
 def main():
-    central = pytz.timezone('US/Central')
-    now = datetime.now(central)
-    start_time = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
-    end_time = now.replace(hour=END_HOUR, minute=END_MINUTE, second=0, microsecond=0)
+    """
+    Main function to control the execution of the script.
+    """
+    central = pytz.timezone('US/Central')  # Define Central timezone
+    now = datetime.now(central)  # Get current time in Central timezone
+    start_time = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)  # Define start time
+    end_time = now.replace(hour=END_HOUR, minute=END_MINUTE, second=0, microsecond=0)  # Define end time
     
+    # Loop until the current time is past the end time
     while datetime.now(central) < end_time:
+        # Check if current time is within the operating period
         if datetime.now(central) >= start_time:
             print(f"Fetching data at {datetime.now(central)}")
-            html_data = fetch_stock_data(URL)
+            html_data = fetch_stock_data(URL)  # Fetch stock data
             if html_data:
-                headers, data = parse_stock_data(html_data)
-                append_to_excel(FILE_PATH, headers, data)
+                headers, data = parse_stock_data(html_data)  # Parse the fetched data
+                append_to_excel(FILE_PATH, headers, data)  # Append data to Excel file
                 print("Data appended to Excel file successfully.")
             else:
                 print("Failed to fetch data. Skipping this update.")
         
-        # Wait for the specified time before the next update
+        # Wait for the specified time before fetching data again
         time.sleep(WAIT_TIME_SECONDS)
 
 if __name__ == "__main__":
-    main()
+    main()  # Execute the main function when the script is run
