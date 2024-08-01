@@ -1,0 +1,78 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import time
+from datetime import datetime
+import pytz
+
+# Constants
+URL = "https://www.tradingview.com/markets/stocks-usa/market-movers-active/"
+FILE_PATH = "TV.xlsx"
+WAIT_TIME_SECONDS = 120
+START_HOUR = 7
+END_HOUR = 18
+END_MINUTE = 30
+
+def fetch_stock_data(url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.content
+        else:
+            print(f"Failed to fetch data. Status code: {response.status_code}. Response: {response.text}")
+            return None
+    except Exception as e:
+        print(f"Error fetching data: {str(e)}")
+        return None
+
+def parse_stock_data(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    rows = soup.select('table tr')  # Adjust this selector based on TradingView's table structure
+    data = []
+    
+    # Assuming the first row contains headers
+    headers = [header.text for header in rows[0].find_all('th')]
+    for row in rows[1:]:
+        columns = row.find_all('td')
+        data.append([column.text for column in columns])
+    
+    return headers, data
+
+def append_to_excel(file_path, headers, data):
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    df = pd.DataFrame(data, columns=headers)
+    df.insert(0, 'Timestamp', current_time)
+    
+    try:
+        existing_df = pd.read_excel(file_path)
+        df = pd.concat([existing_df, df], ignore_index=True)
+    except FileNotFoundError:
+        pass  # File doesn't exist yet, so we'll create it
+    
+    df.to_excel(file_path, index=False)
+
+def main():
+    central = pytz.timezone('US/Central')
+    now = datetime.now(central)
+    start_time = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
+    end_time = now.replace(hour=END_HOUR, minute=END_MINUTE, second=0, microsecond=0)
+    
+    while datetime.now(central) < end_time:
+        if datetime.now(central) >= start_time:
+            print(f"Fetching data at {datetime.now(central)}")
+            html_data = fetch_stock_data(URL)
+            if html_data:
+                headers, data = parse_stock_data(html_data)
+                append_to_excel(FILE_PATH, headers, data)
+                print("Data appended to Excel file successfully.")
+            else:
+                print("Failed to fetch data. Skipping this update.")
+        
+        # Wait for the specified time before the next update
+        time.sleep(WAIT_TIME_SECONDS)
+
+if __name__ == "__main__":
+    main()
